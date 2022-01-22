@@ -14,6 +14,8 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.action.update.UpdateResponse;
 import org.elasticsearch.client.RequestOptions;
@@ -22,6 +24,14 @@ import org.elasticsearch.client.indices.CreateIndexRequest;
 import org.elasticsearch.client.indices.GetIndexRequest;
 import org.elasticsearch.client.indices.GetIndexResponse;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.MultiMatchQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
+import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
+import org.elasticsearch.search.sort.SortOrder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -118,6 +128,120 @@ class HotelDemoApplicationTests {
         restHighLevelClient.bulk(request,RequestOptions.DEFAULT);
 
     }
+
+
+    @Test
+    void matchAllTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().query(QueryBuilders.matchAllQuery());
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void matchTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().query(QueryBuilders.matchQuery("city","上海"));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void multiMatchTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().query(QueryBuilders.multiMatchQuery("上海","city","name"));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void termTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().query(QueryBuilders.termQuery("starName","五星级"));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void rangeTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().query(QueryBuilders.rangeQuery("price").gt(200).lt(500));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void boolTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
+        boolQuery.must().add(QueryBuilders.termQuery("city","上海"));
+        boolQuery.filter().add(QueryBuilders.rangeQuery("price").gt(200).lt(500));
+        request.source().query(boolQuery);
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void sortPageTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        BoolQueryBuilder boolQuery = QueryBuilders.boolQuery();
+        boolQuery.must().add(QueryBuilders.termQuery("city","上海"));
+        boolQuery.filter().add(QueryBuilders.rangeQuery("price").gt(200).lt(500));
+        request.source().query(boolQuery);
+        int page =1,size = 5;
+        request.source().from((page-1)*size).size(5);
+        request.source().sort("price", SortOrder.DESC);
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        SearchHit[] hits = response.getHits().getHits();
+        Arrays.stream(hits).forEach(hit -> {
+            System.out.println(hit.getSourceAsString());
+        });
+    }
+
+    @Test
+    void highLightTest() throws IOException {
+            SearchRequest request = new SearchRequest("hotel");
+            request.source().query(QueryBuilders.multiMatchQuery("上海","name","city"));
+            request.source().highlighter(new HighlightBuilder().field("name").field("city").preTags("<em>").postTags("</em>").requireFieldMatch(false));
+            SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+            SearchHit[] hits = response.getHits().getHits();
+            Arrays.stream(hits).forEach(hit -> {
+                try {
+                    String source = hit.getSourceAsString();
+                    HotelDoc hotelDoc = null;
+                    hotelDoc = objectMapper.readValue(source, HotelDoc.class);
+                    Map<String, HighlightField> highlightFields = hit.getHighlightFields();
+                    HighlightField name = highlightFields.get("name");
+                    String highName = name.getFragments()[0].string();
+                    hotelDoc.setName(highName);
+                    HighlightField city = highlightFields.get("city");
+                    String highCity = city.getFragments()[0].string();
+                    hotelDoc.setCity(highCity);
+                    System.out.println(hotelDoc);
+                } catch (JsonProcessingException e) {
+                    e.printStackTrace();
+                }
+            });
+    }
+
 
 
 

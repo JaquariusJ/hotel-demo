@@ -5,6 +5,7 @@ import cn.itcast.hotel.pojo.HotelDoc;
 import cn.itcast.hotel.service.IHotelService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.scenario.effect.impl.sw.java.JSWBlend_SRC_OUTPeer;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -28,10 +29,17 @@ import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.aggregations.*;
+import org.elasticsearch.search.aggregations.bucket.terms.Terms;
+import org.elasticsearch.search.aggregations.metrics.Stats;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
 import org.elasticsearch.search.sort.SortOrder;
+import org.elasticsearch.search.suggest.Suggest;
+import org.elasticsearch.search.suggest.SuggestBuilder;
+import org.elasticsearch.search.suggest.SuggestBuilders;
+import org.elasticsearch.search.suggest.completion.CompletionSuggestion;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -240,6 +248,47 @@ class HotelDemoApplicationTests {
                     e.printStackTrace();
                 }
             });
+    }
+
+    @Test
+    void aggTest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().aggregation(AggregationBuilders.terms("brandAGG").field("brand").size(20)
+                .order(BucketOrder.aggregation("socreStats.avg",false))
+                .subAggregation(AggregationBuilders.stats("socreStats").field("socre")));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        Aggregations aggregations = response.getAggregations();
+//        Terms terms = aggregations.get("brandAGG");
+//        List<? extends Terms.Bucket> buckets = terms.getBuckets();
+//        for (Terms.Bucket bucket : buckets) {
+//            String brandName = bucket.getKeyAsString();
+//            System.out.println(brandName);
+//
+        Terms terms = aggregations.get("brandAGG");
+        List<? extends Terms.Bucket> buckets = terms.getBuckets();
+        for (Terms.Bucket bucket : buckets) {
+            Stats ss = bucket.getAggregations().get("socreStats");
+            System.out.println(bucket.getKeyAsString());
+            System.out.println(ss.getMaxAsString());
+        }
+    }
+
+    @Test
+    public void testSuggest() throws IOException {
+        SearchRequest request = new SearchRequest("hotel");
+        request.source().suggest(new SuggestBuilder().addSuggestion(
+                "autoSuggest", SuggestBuilders.completionSuggestion("suggestion")
+                .prefix("会z")
+                .skipDuplicates(true)
+                .size(20)
+        ));
+        SearchResponse response = restHighLevelClient.search(request, RequestOptions.DEFAULT);
+        Suggest suggest = response.getSuggest();
+        CompletionSuggestion completionSuggestion = suggest.getSuggestion("autoSuggest");
+        List<CompletionSuggestion.Entry.Option> options = completionSuggestion.getOptions();
+        for (CompletionSuggestion.Entry.Option option : options) {
+            System.out.println(option.getText().toString());
+        }
     }
 
 

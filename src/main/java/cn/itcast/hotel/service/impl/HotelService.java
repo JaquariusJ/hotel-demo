@@ -25,19 +25,24 @@ import org.elasticsearch.index.query.functionscore.FunctionScoreQueryBuilder;
 import org.elasticsearch.index.query.functionscore.ScoreFunctionBuilders;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
+import org.elasticsearch.search.aggregations.AggregationBuilders;
+import org.elasticsearch.search.aggregations.Aggregations;
+import org.elasticsearch.search.aggregations.BucketOrder;
+import org.elasticsearch.search.aggregations.bucket.terms.Terms;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
 import org.elasticsearch.search.sort.SortBuilders;
 import org.elasticsearch.search.sort.SortOrder;
+import org.elasticsearch.search.suggest.Suggest;
+import org.elasticsearch.search.suggest.SuggestBuilder;
+import org.elasticsearch.search.suggest.SuggestBuilders;
+import org.elasticsearch.search.suggest.completion.CompletionSuggestion;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.sql.SQLOutput;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class HotelService extends ServiceImpl<HotelMapper, Hotel> implements IHotelService {
@@ -62,6 +67,76 @@ public class HotelService extends ServiceImpl<HotelMapper, Hotel> implements IHo
             e.printStackTrace();
         }
         return responseHotel;
+    }
+
+    @Override
+    public Map<String, List<String>> filters(RequestParam requestParams) {
+        ResponseHotel responseHotel = null;
+        HashMap<String, List<String>> resultMap = new HashMap<>();
+        try {
+            SearchRequest request = new SearchRequest("hotel");
+            //构建请求
+            FunctionScoreQueryBuilder functionSocreQuery = buildParam(requestParams,request);
+            request.source().query(functionSocreQuery);
+            request.source().size(0);
+            //添加聚合
+            buildAggration(request);
+            SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+            //获取返回结果
+            List<String> brandAGG = getAggResult(response, "brandAgg");
+            resultMap.put("brand",brandAGG);
+            List<String> cityAgg = getAggResult(response, "cityAgg");
+            resultMap.put("city",cityAgg);
+            List<String> starAgg = getAggResult(response, "starAgg");
+            resultMap.put("starName",starAgg);
+
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return resultMap;
+    }
+
+    @Override
+    public List<String> suggestion(String key) {
+        List<String> results = new ArrayList<>();
+        try {
+            SearchRequest request = new SearchRequest("hotel");
+            request.source().suggest(new SuggestBuilder().addSuggestion(
+                    "keySuggest", SuggestBuilders.completionSuggestion("suggestion")
+                            .prefix(key)
+                            .skipDuplicates(true)
+                            .size(20)
+            ));
+            SearchResponse response = client.search(request, RequestOptions.DEFAULT);
+            Suggest suggest = response.getSuggest();
+            CompletionSuggestion completionSuggestion = suggest.getSuggestion("keySuggest");
+            List<CompletionSuggestion.Entry.Option> options = completionSuggestion.getOptions();
+            for (CompletionSuggestion.Entry.Option option : options) {
+                results.add(option.getText().toString());
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return results;
+    }
+
+    private void buildAggration(SearchRequest request) {
+        request.source().aggregation(AggregationBuilders.terms("brandAgg").field("brand").size(100));
+        request.source().aggregation(AggregationBuilders.terms("cityAgg").field("city").size(100));
+        request.source().aggregation(AggregationBuilders.terms("starAgg").field("starName").size(100));
+    }
+
+    private List<String> getAggResult(SearchResponse response,String aggName) {
+        List<String> list = new ArrayList<>();
+        Aggregations aggregations = response.getAggregations();
+        Terms terms = aggregations.get(aggName);
+        List<? extends Terms.Bucket> buckets = terms.getBuckets();
+        for (Terms.Bucket bucket : buckets) {
+            String brandName = bucket.getKeyAsString();
+            list.add(brandName);
+        }
+        return list;
     }
 
     private FunctionScoreQueryBuilder buildParam(RequestParam requestParam,SearchRequest request) {

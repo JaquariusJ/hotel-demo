@@ -8,7 +8,12 @@ import org.springframework.http.ResponseEntity;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 public interface IHotelService extends IService<Hotel> {
     ResponseHotel search(RequestParam requestParam);
+
+    Map<String,List<String>> filters(RequestParam requestParams);
+
+    List<String> suggestion(String k);
 }
